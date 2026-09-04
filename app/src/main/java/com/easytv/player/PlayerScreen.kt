@@ -180,7 +180,12 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
                         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> if (player.isPlaying) player.pause() else player.play()
                         KeyEvent.KEYCODE_MEDIA_PLAY -> player.play()
                         KeyEvent.KEYCODE_MEDIA_PAUSE -> player.pause()
-                        KeyEvent.KEYCODE_BACK -> onBack()
+                        KeyEvent.KEYCODE_BACK -> if (keyStartedWithOverlay) {
+                            controlsVisible = false
+                            feedback = null
+                        } else {
+                            onBack()
+                        }
                     }
                     true
                 }
