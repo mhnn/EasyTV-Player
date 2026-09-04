@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -196,8 +197,9 @@ private fun Poster(item: Series, onPlay: (Series, Int, Boolean) -> Unit) {
     var focused by remember { mutableStateOf(false) }
     var lastClick by remember { mutableLongStateOf(0L) }
     val context = LocalContext.current
-    val poster by produceState<ImageBitmap?>(null, item.posterUri) {
-        value = item.posterUri?.let { uri -> withContext(Dispatchers.IO) {
+    val thumbnailUri = item.posterUri.takeIf { item.history != null }
+    val poster by produceState<ImageBitmap?>(null, thumbnailUri) {
+        value = thumbnailUri?.let { uri -> withContext(Dispatchers.IO) {
             runCatching { context.contentResolver.openInputStream(android.net.Uri.parse(uri))?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() } }.getOrNull()
         } }
     }
@@ -207,15 +209,11 @@ private fun Poster(item: Series, onPlay: (Series, Int, Boolean) -> Unit) {
             if (now - lastClick <= 500) onPlay(item, 0, false)
             lastClick = now
         },
-        modifier = Modifier.size(120.dp, 160.dp).onFocusChanged { focused = it.isFocused }.graphicsLayer { scaleX = if (focused) 1.06f else 1f; scaleY = scaleX },
+        modifier = Modifier.width(240.dp).aspectRatio(16f / 9f).onFocusChanged { focused = it.isFocused }.graphicsLayer { scaleX = if (focused) 1.06f else 1f; scaleY = scaleX },
         shape = RoundedCornerShape(6.dp), color = Color(0xFF343536), border = if (focused) androidx.compose.foundation.BorderStroke(3.dp, FocusYellow) else null,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (poster != null) Image(poster!!, contentDescription = item.name, modifier = Modifier.fillMaxSize())
-            else {
-                Icon(Icons.Default.Movie, null, tint = FocusYellow, modifier = Modifier.size(52.dp))
-                Text(item.name.take(1), fontSize = 26.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(10.dp))
-            }
+            if (poster != null) Image(poster!!, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
 }

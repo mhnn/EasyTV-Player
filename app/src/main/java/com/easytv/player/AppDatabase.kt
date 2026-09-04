@@ -5,7 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", null, 1) {
+class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", null, 3) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE directories(uri TEXT PRIMARY KEY, name TEXT NOT NULL, added_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE series(id INTEGER PRIMARY KEY AUTOINCREMENT, directory_uri TEXT UNIQUE NOT NULL, name TEXT NOT NULL, poster_uri TEXT)")
@@ -13,7 +13,9 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", nu
         db.execSQL("CREATE TABLE history(series_id INTEGER PRIMARY KEY, episode_id INTEGER NOT NULL, position_ms INTEGER NOT NULL, duration_ms INTEGER NOT NULL, updated_at INTEGER NOT NULL)")
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 3) db.execSQL("UPDATE series SET poster_uri=NULL")
+    }
 
     fun directories(): List<Pair<String, String>> = readableDatabase.rawQuery(
         "SELECT uri,name FROM directories ORDER BY added_at", null
@@ -35,10 +37,11 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", nu
         delete("directories", "uri=?", arrayOf(uri))
     }
 
-    fun replaceSeries(directoryUri: String, name: String, posterUri: String?, files: List<ScannedEpisode>) = writableDatabase.transaction {
-        val values = ContentValues().apply { put("directory_uri", directoryUri); put("name", name); put("poster_uri", posterUri) }
-        insertWithOnConflict("series", null, values, SQLiteDatabase.CONFLICT_IGNORE)
-        update("series", values, "directory_uri=?", arrayOf(directoryUri))
+    fun replaceSeries(directoryUri: String, name: String, files: List<ScannedEpisode>) = writableDatabase.transaction {
+        val insertValues = ContentValues().apply { put("directory_uri", directoryUri); put("name", name); putNull("poster_uri") }
+        insertWithOnConflict("series", null, insertValues, SQLiteDatabase.CONFLICT_IGNORE)
+        val updateValues = ContentValues().apply { put("directory_uri", directoryUri); put("name", name) }
+        update("series", updateValues, "directory_uri=?", arrayOf(directoryUri))
         val id = rawQuery("SELECT id FROM series WHERE directory_uri=?", arrayOf(directoryUri)).use { it.moveToFirst(); it.getLong(0) }
         val savedHistory = rawQuery(
             "SELECT h.position_ms,h.duration_ms,h.updated_at,e.uri FROM history h JOIN episodes e ON h.episode_id=e.id WHERE h.series_id=?",
@@ -93,7 +96,15 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", nu
         writableDatabase.insertWithOnConflict("history", null, values, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
-    fun clearHistory() = writableDatabase.delete("history", null, null)
+    fun updateThumbnail(seriesId: Long, thumbnailUri: String) {
+        val values = ContentValues().apply { put("poster_uri", thumbnailUri) }
+        writableDatabase.update("series", values, "id=?", arrayOf(seriesId.toString()))
+    }
+
+    fun clearHistory() = writableDatabase.transaction {
+        update("series", ContentValues().apply { putNull("poster_uri") }, null, null)
+        delete("history", null, null)
+    }
 }
 
 private data class SavedHistory(val positionMs: Long, val durationMs: Long, val updatedAt: Long, val uri: String)

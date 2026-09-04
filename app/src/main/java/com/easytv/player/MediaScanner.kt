@@ -8,7 +8,6 @@ data class ScannedEpisode(val uri: String, val name: String, val number: Int, va
 
 class MediaScanner(private val context: Context, private val database: AppDatabase) {
     private val extensions = setOf("mp4", "mkv", "avi", "mov", "flv", "ts", "rmvb")
-    private val posters = listOf("poster.jpg", "cover.jpg", "folder.jpg")
 
     fun scan(rootUri: String, onProgress: (Int, Int, Int) -> Unit = { _, _, _ -> }) {
         val root = DocumentFile.fromTreeUri(context, android.net.Uri.parse(rootUri)) ?: return
@@ -23,8 +22,7 @@ class MediaScanner(private val context: Context, private val database: AppDataba
                 .sortedWith(compareBy<ScannedEpisode> { it.number }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 .toList()
             if (episodes.isNotEmpty()) {
-                val poster = posters.firstNotNullOfOrNull { wanted -> children.firstOrNull { it.name.equals(wanted, true) }?.uri?.toString() }
-                database.replaceSeries(folder.uri.toString(), folder.name ?: "未命名电视剧", poster, episodes)
+                database.replaceSeries(folder.uri.toString(), folder.name ?: "未命名电视剧", episodes)
                 found++
             }
             onProgress(index + 1, seriesFolders.size, found)
@@ -43,8 +41,7 @@ class MediaScanner(private val context: Context, private val database: AppDataba
                 .sortedWith(compareBy<ScannedEpisode> { it.number }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.name })
                 .toList()
             if (episodes.isNotEmpty()) {
-                val poster = posters.firstNotNullOfOrNull { wanted -> children.firstOrNull { it.name.equals(wanted, true) }?.let(android.net.Uri::fromFile)?.toString() }
-                database.replaceSeries(folder.absolutePath, folder.name, poster, episodes)
+                database.replaceSeries(folder.absolutePath, folder.name, episodes)
                 found++
             }
             onProgress(index + 1, folders.size, found)

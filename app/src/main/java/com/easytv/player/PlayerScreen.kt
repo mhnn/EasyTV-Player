@@ -66,7 +66,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
         openEpisode(startIndex, start)
         onDispose {
             val episode = series.episodes[index]
-            repository.saveHistoryAsync(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()))
+            repository.saveProgressAsync(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()), episode)
             player.release()
         }
     }
@@ -81,7 +81,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     LaunchedEffect(Unit) {
         while (true) {
             val episode = series.episodes[index]
-            repository.saveHistory(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()))
+            repository.saveProgress(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()), episode)
             delay(5_000)
         }
     }
@@ -126,8 +126,8 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     }
 }
 
-private fun AppRepository.saveHistoryAsync(history: PlayHistory) {
-    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { saveHistory(history) }
+private fun AppRepository.saveProgressAsync(history: PlayHistory, episode: Episode) {
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { saveProgress(history, episode) }
 }
 
 private fun formatPlayerTime(ms: Long): String {

@@ -7,6 +7,7 @@ import kotlinx.coroutines.withContext
 class AppRepository(context: Context) {
     private val database = AppDatabase(context)
     private val scanner = MediaScanner(context, database)
+    private val thumbnails = PlaybackThumbnailStore(context)
     private val preferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
     suspend fun loadSeries() = withContext(Dispatchers.IO) { database.allSeries() }
@@ -24,8 +25,11 @@ class AppRepository(context: Context) {
         }
     }
     suspend fun removeDirectory(uri: String) = withContext(Dispatchers.IO) { database.removeDirectory(uri) }
-    suspend fun saveHistory(history: PlayHistory) = withContext(Dispatchers.IO) { database.saveHistory(history) }
-    suspend fun clearHistory() = withContext(Dispatchers.IO) { database.clearHistory() }
+    suspend fun saveProgress(history: PlayHistory, episode: Episode) = withContext(Dispatchers.IO) {
+        database.saveHistory(history)
+        thumbnails.capture(history.seriesId, episode.uri, history.positionMs)?.let { database.updateThumbnail(history.seriesId, it) }
+    }
+    suspend fun clearHistory() = withContext(Dispatchers.IO) { database.clearHistory(); thumbnails.clear() }
 
     fun settings() = PlayerSettings(
         preferences.getInt("seek", 10), preferences.getBoolean("next", true),
