@@ -83,6 +83,9 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { playing = value }
+            override fun onCues(cues: List<androidx.media3.common.text.Cue>) {
+                playerView?.subtitleView?.setCues(filterSubtitleCues(cues))
+            }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED && settings.autoPlayNext && index < series.episodes.lastIndex) openEpisode(index + 1)
             }
@@ -131,7 +134,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
                         keyStartedWithOverlay = controlsVisible
                         longSeek = false
                         longOk = false
-                        showControls()
+                        if (key.keyCode != KeyEvent.KEYCODE_BACK && key.keyCode !in OK_KEYS) showControls()
                     } else when (key.keyCode) {
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
                             longSeek = true
@@ -168,7 +171,6 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
                             if (longOk) {
                                 player.setPlaybackSpeed(1f)
                                 feedback = "1.0x 倍速"
-                                showControls()
                             } else if (keyStartedWithOverlay) {
                                 activateControl()
                             } else {
@@ -240,6 +242,8 @@ private val PLAYER_KEYS = setOf(
     KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
     KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_BACK,
 )
+
+private val OK_KEYS = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A)
 
 private fun AppRepository.saveProgressAsync(history: PlayHistory, frame: android.graphics.Bitmap?) {
     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { saveProgress(history, frame) }

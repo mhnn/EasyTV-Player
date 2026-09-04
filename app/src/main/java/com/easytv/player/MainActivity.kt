@@ -170,23 +170,25 @@ private fun EmptyLibrary(onDirectories: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SeriesPanel(item: Series, onPlay: (Series, Int, Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface).padding(14.dp)) {
-        Poster(item, onPlay)
-        Spacer(Modifier.width(22.dp))
-        Column(Modifier.weight(1f)) {
-            Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-            Text("${item.episodes.size} 集", color = TextSecondary, fontSize = 22.sp)
-            item.history?.takeUnless { it.completed }?.let { history ->
-                Spacer(Modifier.height(10.dp))
-                val index = item.episodes.indexOfFirst { it.id == history.episodeId }.coerceAtLeast(0)
-                ContinueWatching(item, index, history) { onPlay(item, index, true) }
-            }
-            Spacer(Modifier.height(12.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item.episodes.forEachIndexed { index, episode ->
-                    val played = item.history?.let { it.episodeId > episode.id || (it.episodeId == episode.id && it.completed) } == true
-                    EpisodeButton(index + 1, played, item.history?.episodeId == episode.id) { onPlay(item, index, false) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Surface).padding(14.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Poster(item, onPlay)
+            Spacer(Modifier.width(22.dp))
+            Column(Modifier.weight(1f)) {
+                Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text("${item.episodes.size} 集", color = TextSecondary, fontSize = 22.sp)
+                item.history?.takeUnless { it.completed }?.let { history ->
+                    Spacer(Modifier.height(10.dp))
+                    val index = item.episodes.indexOfFirst { it.id == history.episodeId }.coerceAtLeast(0)
+                    ContinueWatching(item, index, history) { onPlay(item, index, true) }
                 }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item.episodes.forEachIndexed { index, episode ->
+                val played = item.history?.let { it.episodeId > episode.id || (it.episodeId == episode.id && it.completed) } == true
+                EpisodeButton(index + 1, played, item.history?.episodeId == episode.id) { onPlay(item, index, false) }
             }
         }
     }
