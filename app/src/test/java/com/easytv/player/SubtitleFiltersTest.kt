@@ -15,4 +15,14 @@ class SubtitleFiltersTest {
     fun `short text that happens to contain coordinates is not hidden`() {
         assertFalse(isAssDrawingText("m 2 3"))
     }
+
+    @Test
+    fun `mixed subtitle cues keep dialogue and remove drawing data`() {
+        val cues = listOf(
+            androidx.media3.common.text.Cue.Builder().setText("m 2.39 33.02 b 2.6 33.37 2.93 33.7").build(),
+            androidx.media3.common.text.Cue.Builder().setText("normal dialogue").build(),
+        )
+
+        assertTrue(filterSubtitleCues(cues).single().text == "normal dialogue")
+    }
 }

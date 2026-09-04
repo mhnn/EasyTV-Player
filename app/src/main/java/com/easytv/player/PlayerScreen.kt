@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.text.CueGroup
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
@@ -83,8 +84,8 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(value: Boolean) { playing = value }
-            override fun onCues(cues: List<androidx.media3.common.text.Cue>) {
-                playerView?.subtitleView?.setCues(filterSubtitleCues(cues))
+            override fun onCues(cueGroup: CueGroup) {
+                playerView?.subtitleView?.setCues(filterSubtitleCues(cueGroup.cues))
             }
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED && settings.autoPlayNext && index < series.episodes.lastIndex) openEpisode(index + 1)

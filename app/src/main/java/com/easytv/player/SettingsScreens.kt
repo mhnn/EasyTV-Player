@@ -191,7 +191,7 @@ fun SettingsScreen(repository: AppRepository, onDirectories: () -> Unit, onBack:
                     Switch(checked = settings.autoPlayNext, onCheckedChange = { update(settings.copy(autoPlayNext = it)) })
                 }
             }
-            item { SettingRow(Icons.Default.Info, "关于", "简易电视播放器  1.0.0") {} }
+            item { SettingRow(Icons.Default.Info, "关于", "简易电视播放器  ${BuildConfig.VERSION_NAME}") {} }
         }
     }
     if (confirmClear) AlertDialog(
