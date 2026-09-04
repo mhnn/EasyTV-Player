@@ -1,8 +1,10 @@
 package com.easytv.player
 
 import android.Manifest
+import android.content.Context
 import android.os.Build
 import android.os.Environment
+import android.os.storage.StorageManager
 import android.provider.Settings
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -24,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 fun DirectoryScreen(repository: AppRepository, onAdd: () -> Unit, onBack: () -> Unit) {
@@ -66,18 +69,26 @@ fun DirectoryScreen(repository: AppRepository, onAdd: () -> Unit, onBack: () -> 
 fun FileBrowserScreen(repository: AppRepository, onDone: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var current by remember { mutableStateOf(Environment.getExternalStorageDirectory()) }
+    var current by remember { mutableStateOf<File?>(null) }
     var permissionReady by remember { mutableStateOf(hasStorageAccess()) }
     var scanning by remember { mutableStateOf(false) }
     var found by remember { mutableIntStateOf(0) }
+    var storageRefresh by remember { mutableIntStateOf(0) }
     val scanFocusRequester = remember { FocusRequester() }
+    val storageFocusRequester = remember { FocusRequester() }
     val legacyPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { permissionReady = it }
     val settingsPermission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { permissionReady = hasStorageAccess() }
-    val folders = remember(current, permissionReady) { if (permissionReady) current.listFiles()?.filter { it.isDirectory && !it.name.startsWith('.') }?.sortedBy { it.name.lowercase() }.orEmpty() else emptyList() }
-    LaunchedEffect(current, permissionReady) { if (permissionReady) scanFocusRequester.requestFocus() }
+    val storageLocations = remember(permissionReady, storageRefresh) { if (permissionReady) findStorageLocations(context) else emptyList() }
+    val folders = remember(current, permissionReady) { if (permissionReady) current?.listFiles()?.filter { it.isDirectory && !it.name.startsWith('.') }?.sortedBy { it.name.lowercase() }.orEmpty() else emptyList() }
+    LaunchedEffect(current, permissionReady, storageLocations) {
+        if (permissionReady) {
+            if (current == null && storageLocations.isNotEmpty()) storageFocusRequester.requestFocus()
+            else if (current != null) scanFocusRequester.requestFocus()
+        }
+    }
 
     PageScaffold("选择扫描目录", onBack) {
-        Text(current.absolutePath, fontSize = 22.sp, color = Color.LightGray)
+        Text(current?.absolutePath ?: "请选择内部存储或外接硬盘", fontSize = 22.sp, color = Color.LightGray)
         Spacer(Modifier.height(14.dp))
         if (!permissionReady) {
             Text("需要存储权限才能浏览本地和外接硬盘", fontSize = 25.sp)
@@ -86,13 +97,33 @@ fun FileBrowserScreen(repository: AppRepository, onDone: () -> Unit, onBack: () 
                 if (Build.VERSION.SDK_INT >= 30) settingsPermission.launch(android.content.Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")))
                 else legacyPermission.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
             }) { Icon(Icons.Default.LockOpen, null); Spacer(Modifier.width(8.dp)); Text("授予存储权限") }
+        } else if (current == null) {
+            TvButton(onClick = { storageRefresh++ }) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("刷新设备") }
+            Spacer(Modifier.height(16.dp))
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(storageLocations, key = { it.directory.absolutePath }) { location ->
+                    TvButton(
+                        onClick = { current = location.directory },
+                        modifier = Modifier.fillMaxWidth().height(72.dp).then(if (location == storageLocations.first()) Modifier.focusRequester(storageFocusRequester) else Modifier),
+                    ) {
+                        Icon(if (location.removable) Icons.Default.Usb else Icons.Default.Storage, null, tint = FocusYellow)
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(location.name, fontSize = 24.sp)
+                            Text(location.directory.absolutePath, fontSize = 18.sp, color = Color.LightGray)
+                        }
+                        Icon(Icons.Default.ChevronRight, null)
+                    }
+                }
+            }
         } else {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TvButton(onClick = { current.parentFile?.let { current = it } }) { Icon(Icons.Default.ArrowUpward, null); Spacer(Modifier.width(8.dp)); Text("上一级") }
+                TvButton(onClick = { current = storageParent(current!!, storageLocations) }) { Icon(Icons.Default.ArrowUpward, null); Spacer(Modifier.width(8.dp)); Text("上一级") }
                 TvButton(onClick = {
                     scanning = true
                     scope.launch {
-                        repository.addPath(current.absolutePath, current.name.ifBlank { current.absolutePath }) { _, _, count -> found = count }
+                        val selected = current!!
+                        repository.addPath(selected.absolutePath, selected.name.ifBlank { selected.absolutePath }) { _, _, count -> found = count }
                         scanning = false; onDone()
                     }
                 }, modifier = Modifier.focusRequester(scanFocusRequester)) { Icon(Icons.Default.Check, null); Spacer(Modifier.width(8.dp)); Text("扫描此目录") }
@@ -107,10 +138,37 @@ fun FileBrowserScreen(repository: AppRepository, onDone: () -> Unit, onBack: () 
             }
         }
     }
-    if (scanning) ScanDialog(current.absolutePath, found)
+    if (scanning) ScanDialog(current?.absolutePath.orEmpty(), found)
 }
 
 private fun hasStorageAccess(): Boolean = if (Build.VERSION.SDK_INT >= 30) Environment.isExternalStorageManager() else true
+
+internal data class StorageLocation(val name: String, val directory: File, val removable: Boolean)
+
+internal fun storageParent(current: File, locations: List<StorageLocation>): File? {
+    if (locations.any { it.directory.absolutePath == current.absolutePath }) return null
+    return current.parentFile
+}
+
+@Suppress("DEPRECATION")
+private fun findStorageLocations(context: Context): List<StorageLocation> {
+    val manager = context.getSystemService(Context.STORAGE_SERVICE) as StorageManager
+    val locations = if (Build.VERSION.SDK_INT >= 24) {
+        manager.storageVolumes.mapNotNull { volume ->
+            val directory = when {
+                Build.VERSION.SDK_INT >= 30 -> volume.directory
+                volume.isPrimary -> Environment.getExternalStorageDirectory()
+                else -> volume.uuid?.let { File("/storage", it) }
+            }
+            directory?.takeIf { it.exists() }?.let {
+                StorageLocation(volume.getDescription(context), it, volume.isRemovable)
+            }
+        }
+    } else {
+        listOf(StorageLocation("内部存储", Environment.getExternalStorageDirectory(), false))
+    }
+    return locations.distinctBy { it.directory.absolutePath }
+}
 
 @Composable
 fun SettingsScreen(repository: AppRepository, onDirectories: () -> Unit, onBack: () -> Unit) {
