@@ -24,6 +24,13 @@ class StartupResumeTest {
         assertNull(findLatestResume(listOf(completed, orphaned)))
     }
 
+    @Test
+    fun `thumbnail double click resumes matching history episode`() {
+        val item = series(id = 2, episodeId = 22, position = 30_000, duration = 100_000, updatedAt = 200)
+
+        assertEquals(1, resumeEpisodeIndex(item))
+    }
+
     private fun series(id: Long, episodeId: Long, position: Long, duration: Long, updatedAt: Long): Series {
         val episodes = listOf(
             Episode(id * 10 + 1, id, "file:///episode1.mp4", "episode1.mp4", 1, 20_000_000),

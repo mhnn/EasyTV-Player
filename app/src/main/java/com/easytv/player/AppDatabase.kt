@@ -5,7 +5,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 
-class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", null, 3) {
+class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", null, 4) {
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE directories(uri TEXT PRIMARY KEY, name TEXT NOT NULL, added_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE series(id INTEGER PRIMARY KEY AUTOINCREMENT, directory_uri TEXT UNIQUE NOT NULL, name TEXT NOT NULL, poster_uri TEXT)")
@@ -14,7 +14,7 @@ class AppDatabase(context: Context) : SQLiteOpenHelper(context, "easy_tv.db", nu
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 3) db.execSQL("UPDATE series SET poster_uri=NULL")
+        if (oldVersion < 4) db.execSQL("UPDATE series SET poster_uri=NULL")
     }
 
     fun directories(): List<Pair<String, String>> = readableDatabase.rawQuery(

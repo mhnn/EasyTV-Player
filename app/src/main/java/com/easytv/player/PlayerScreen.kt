@@ -2,18 +2,24 @@ package com.easytv.player
 
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.TextureView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -37,12 +43,17 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(true) }
-    var speedIndex by remember { mutableIntStateOf(0) }
-    val speeds = remember { listOf(1f, 1.25f, 1.5f, 2f) }
+    var selectedControl by remember { mutableIntStateOf(1) }
+    var keyStartedWithOverlay by remember { mutableStateOf(false) }
+    var longSeek by remember { mutableStateOf(false) }
+    var longOk by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
     val player = remember { ExoPlayer.Builder(context).build() }
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
 
     fun openEpisode(target: Int, startAt: Long = 0L) {
         index = target
+        selectedControl = 1
         player.setMediaItem(MediaItem.fromUri(series.episodes[target].uri))
         player.prepare(); player.seekTo(startAt); player.play()
     }
@@ -53,6 +64,21 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
         controlsVisible = true
         controlsInteraction++
     }
+    fun showControls() {
+        controlsVisible = true
+        controlsInteraction++
+    }
+    fun activateControl() {
+        when (selectedControl) {
+            0 -> if (index > 0) openEpisode(index - 1)
+            1 -> if (player.isPlaying) player.pause() else player.play()
+            2 -> if (index < series.episodes.lastIndex) openEpisode(index + 1)
+        }
+        showControls()
+    }
+    fun renderedFrame() = (playerView?.videoSurfaceView as? TextureView)
+        ?.takeIf { it.isAvailable && player.playbackState == Player.STATE_READY && player.videoSize.width > 0 }
+        ?.let { runCatching { it.getBitmap(640, 360) }.getOrNull() }
 
     DisposableEffect(player) {
         val listener = object : Player.Listener {
@@ -66,7 +92,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
         openEpisode(startIndex, start)
         onDispose {
             val episode = series.episodes[index]
-            repository.saveProgressAsync(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()), episode)
+            repository.saveProgressAsync(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()), renderedFrame())
             player.release()
         }
     }
@@ -81,7 +107,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     LaunchedEffect(Unit) {
         while (true) {
             val episode = series.episodes[index]
-            repository.saveProgress(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()), episode)
+            repository.saveProgress(PlayHistory(series.id, episode.id, player.currentPosition, player.duration.coerceAtLeast(0), System.currentTimeMillis()), renderedFrame())
             delay(5_000)
         }
     }
@@ -92,33 +118,90 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
         }
     }
     LaunchedEffect(feedback) { if (feedback != null) { delay(3_000); feedback = null } }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Box(
-        Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
-            if (event.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-            when (event.nativeKeyEvent.keyCode) {
-                KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> { seek(if (event.nativeKeyEvent.isLongPress) -30_000 else -settings.seekSeconds * 1000L); true }
-                KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { seek(if (event.nativeKeyEvent.isLongPress) 30_000 else settings.seekSeconds * 1000L); true }
-                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
-                    if (event.nativeKeyEvent.isLongPress) { speedIndex = (speedIndex + 1) % speeds.size; player.setPlaybackSpeed(speeds[speedIndex]); feedback = "${speeds[speedIndex]}x 倍速" }
-                    else if (player.isPlaying) player.pause() else player.play()
-                    controlsVisible = true; controlsInteraction++; true
+        Modifier.fillMaxSize().background(Color.Black).focusRequester(focusRequester).focusable().onPreviewKeyEvent { event ->
+            val key = event.nativeKeyEvent
+            val handled = key.keyCode in PLAYER_KEYS
+            if (!handled) return@onPreviewKeyEvent false
+            when (key.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (key.repeatCount == 0) {
+                        keyStartedWithOverlay = controlsVisible
+                        longSeek = false
+                        longOk = false
+                        showControls()
+                    } else when (key.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                            longSeek = true
+                            seek(-settings.seekSeconds * 1_000L)
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                            longSeek = true
+                            seek(settings.seekSeconds * 1_000L)
+                        }
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A -> if (!longOk) {
+                            longOk = true
+                            player.setPlaybackSpeed(2f)
+                            if (!player.isPlaying) player.play()
+                            feedback = "2.0x 倍速"
+                        }
+                    }
+                    true
                 }
-                KeyEvent.KEYCODE_BACK -> { onBack(); true }
-                else -> false
+                KeyEvent.ACTION_UP -> {
+                    when (key.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_LEFT -> if (!longSeek) {
+                            if (keyStartedWithOverlay) selectedControl = movePlayerControl(selectedControl, -1, index > 0, index < series.episodes.lastIndex)
+                            else seek(-settings.seekSeconds * 1_000L)
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> if (!longSeek) {
+                            if (keyStartedWithOverlay) selectedControl = movePlayerControl(selectedControl, 1, index > 0, index < series.episodes.lastIndex)
+                            else seek(settings.seekSeconds * 1_000L)
+                        }
+                        KeyEvent.KEYCODE_DPAD_UP -> if (keyStartedWithOverlay) selectedControl = movePlayerControl(selectedControl, -1, index > 0, index < series.episodes.lastIndex)
+                        KeyEvent.KEYCODE_DPAD_DOWN -> if (keyStartedWithOverlay) selectedControl = movePlayerControl(selectedControl, 1, index > 0, index < series.episodes.lastIndex)
+                        KeyEvent.KEYCODE_MEDIA_REWIND -> if (!longSeek) seek(-settings.seekSeconds * 1_000L)
+                        KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> if (!longSeek) seek(settings.seekSeconds * 1_000L)
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A -> {
+                            if (longOk) {
+                                player.setPlaybackSpeed(1f)
+                                feedback = "1.0x 倍速"
+                                showControls()
+                            } else if (keyStartedWithOverlay) {
+                                activateControl()
+                            } else {
+                                selectedControl = 1
+                                if (player.isPlaying) player.pause() else player.play()
+                                showControls()
+                            }
+                        }
+                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> if (player.isPlaying) player.pause() else player.play()
+                        KeyEvent.KEYCODE_MEDIA_PLAY -> player.play()
+                        KeyEvent.KEYCODE_MEDIA_PAUSE -> player.pause()
+                        KeyEvent.KEYCODE_BACK -> onBack()
+                    }
+                    true
+                }
+                else -> true
             }
         }
     ) {
-        AndroidView(factory = { LayoutInflater.from(it).inflate(R.layout.player_view, null).also { view -> (view as PlayerView).player = player } }, modifier = Modifier.fillMaxSize())
+        AndroidView(factory = { LayoutInflater.from(it).inflate(R.layout.player_view, null).also { view -> (view as PlayerView).apply { isFocusable = false; this.player = player; playerView = this } } }, modifier = Modifier.fillMaxSize())
         if (controlsVisible) {
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xCC101112)).padding(28.dp)) {
                 Text("${series.name}  ·  第${index + 1}集", fontSize = 26.sp)
                 Spacer(Modifier.height(14.dp))
                 LinearProgressIndicator(progress = { if (duration > 0) position.toFloat() / duration else 0f }, modifier = Modifier.fillMaxWidth().height(9.dp), color = FocusYellow)
                 Spacer(Modifier.height(10.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.FastRewind, null); Spacer(Modifier.width(18.dp)); Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, null)
-                    Spacer(Modifier.width(18.dp)); Icon(Icons.Default.FastForward, null); Spacer(Modifier.weight(1f)); Text("${formatPlayerTime(position)} / ${formatPlayerTime(duration)}", fontSize = 22.sp)
+                Box(Modifier.fillMaxWidth().height(92.dp)) {
+                    Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        PlayerControl(Icons.Default.SkipPrevious, "上一集", selectedControl == 0, index > 0)
+                        PlayerControl(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "暂停" else "播放", selectedControl == 1, true)
+                        PlayerControl(Icons.Default.SkipNext, "下一集", selectedControl == 2, index < series.episodes.lastIndex)
+                    }
+                    Text("${formatPlayerTime(position)} / ${formatPlayerTime(duration)}", fontSize = 22.sp, modifier = Modifier.align(Alignment.CenterEnd))
                 }
             }
         }
@@ -126,8 +209,35 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     }
 }
 
-private fun AppRepository.saveProgressAsync(history: PlayHistory, episode: Episode) {
-    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { saveProgress(history, episode) }
+@Composable
+private fun PlayerControl(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, enabled: Boolean) {
+    Row(
+        Modifier.size(156.dp, 76.dp).background(if (selected) Color(0xFF4A421B) else Color(0xFF303132), RoundedCornerShape(7.dp))
+            .then(if (selected) Modifier.border(3.dp, FocusYellow, RoundedCornerShape(7.dp)) else Modifier).padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, null, tint = if (enabled) Color.White else Color.Gray)
+        Spacer(Modifier.width(8.dp))
+        Text(label, fontSize = 20.sp, color = if (enabled) Color.White else Color.Gray)
+    }
+}
+
+internal fun movePlayerControl(current: Int, direction: Int, hasPrevious: Boolean, hasNext: Boolean): Int {
+    val enabled = listOfNotNull(0.takeIf { hasPrevious }, 1, 2.takeIf { hasNext })
+    val position = enabled.indexOf(current).takeIf { it >= 0 } ?: enabled.indexOf(1)
+    return enabled[(position + direction).coerceIn(0, enabled.lastIndex)]
+}
+
+private val PLAYER_KEYS = setOf(
+    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN,
+    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A,
+    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE,
+    KeyEvent.KEYCODE_MEDIA_REWIND, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD, KeyEvent.KEYCODE_BACK,
+)
+
+private fun AppRepository.saveProgressAsync(history: PlayHistory, frame: android.graphics.Bitmap?) {
+    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { saveProgress(history, frame) }
 }
 
 private fun formatPlayerTime(ms: Long): String {

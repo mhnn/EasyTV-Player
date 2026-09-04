@@ -206,16 +206,24 @@ private fun Poster(item: Series, onPlay: (Series, Int, Boolean) -> Unit) {
     Surface(
         onClick = {
             val now = android.os.SystemClock.elapsedRealtime()
-            if (now - lastClick <= 500) onPlay(item, 0, false)
+            if (now - lastClick <= 500) {
+                val resumeIndex = resumeEpisodeIndex(item)
+                onPlay(item, resumeIndex ?: 0, resumeIndex != null)
+            }
             lastClick = now
         },
         modifier = Modifier.width(240.dp).aspectRatio(16f / 9f).onFocusChanged { focused = it.isFocused }.graphicsLayer { scaleX = if (focused) 1.06f else 1f; scaleY = scaleX },
         shape = RoundedCornerShape(6.dp), color = Color(0xFF343536), border = if (focused) androidx.compose.foundation.BorderStroke(3.dp, FocusYellow) else null,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (poster != null) Image(poster!!, contentDescription = item.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            if (poster != null) Image(poster!!, contentDescription = item.name, contentScale = ContentScale.FillBounds, modifier = Modifier.fillMaxSize())
         }
     }
+}
+
+internal fun resumeEpisodeIndex(series: Series): Int? {
+    val history = series.history ?: return null
+    return series.episodes.indexOfFirst { it.id == history.episodeId }.takeIf { it >= 0 }
 }
 
 @Composable

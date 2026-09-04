@@ -1,6 +1,7 @@
 package com.easytv.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,9 +26,13 @@ class AppRepository(context: Context) {
         }
     }
     suspend fun removeDirectory(uri: String) = withContext(Dispatchers.IO) { database.removeDirectory(uri) }
-    suspend fun saveProgress(history: PlayHistory, episode: Episode) = withContext(Dispatchers.IO) {
+    suspend fun saveProgress(history: PlayHistory, frame: Bitmap?) = withContext(Dispatchers.IO) {
         database.saveHistory(history)
-        thumbnails.capture(history.seriesId, episode.uri, history.positionMs)?.let { database.updateThumbnail(history.seriesId, it) }
+        try {
+            frame?.let { thumbnails.saveRenderedFrame(history.seriesId, it) }?.let { database.updateThumbnail(history.seriesId, it) }
+        } finally {
+            frame?.recycle()
+        }
     }
     suspend fun clearHistory() = withContext(Dispatchers.IO) { database.clearHistory(); thumbnails.clear() }
 
