@@ -14,7 +14,7 @@ android {
         targetSdk = 34
         versionCode = 2
         versionName = "1.0.1"
-        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
+        ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64") }
     }
 
     buildFeatures { compose = true; buildConfig = true }
