@@ -89,6 +89,20 @@ APK 输出在 `app/build/outputs/apk/debug/app-debug.apk`。应用最低 API 21�
 
 ## 参考
 
+### 同类项目
+
 - [OwnTV](https://github.com/ahXN00/OwnTV)
 - [DangoPlayer](https://github.com/brunochanrio/DangoPlayer)
 - [local-tv](https://github.com/outmanwt/local-tv)
+
+### 使用的第三方库
+
+| 库 | 用途 | 链接 |
+| --- | --- | --- |
+| Jetpack Compose | UI 框架（含 Compose BOM 2025.01.01） | https://developer.android.com/develop/ui/compose |
+| Material3 | 界面组件与大字号主题 | https://github.com/androidx/androidx/tree/androidx-main/compose/material3 |
+| Media3 ExoPlayer 1.5.1 | 视频播放（`media3-exoplayer` / `media3-ui`） | https://developer.android.com/media/media3 |
+| kotlinx-coroutines 1.9.0 | 异步与协程 | https://github.com/Kotlin/kotlinx.coroutines |
+| androidx.documentfile 1.0.1 | SAF 目录授权与文件访问 | https://developer.android.com/reference/androidx/documentfile/provider/DocumentFile |
+| androidx.activity / lifecycle | Compose 集成与生命周期感知 | https://developer.android.com/jetpack/androidx/releases/activity |
+| JUnit 4.13.2 | 单元测试 | https://junit.org/junit4/ |
