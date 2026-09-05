@@ -1,5 +1,6 @@
 package com.easytv.player
 
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.TextureView
@@ -48,6 +49,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
     var keyStartedWithOverlay by remember { mutableStateOf(false) }
     var longSeek by remember { mutableStateOf(false) }
     var longOk by remember { mutableStateOf(false) }
+    var holdStartMs by remember { mutableLongStateOf(0L) }
     val focusRequester = remember { FocusRequester() }
     val player = remember { ExoPlayer.Builder(context).build() }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
@@ -64,6 +66,17 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
         feedback = if (delta > 0) "快进 +${delta / 1000}秒" else "快退 ${delta / 1000}秒"
         controlsVisible = true
         controlsInteraction++
+    }
+    fun holdSeekStep(baseMs: Long): Long {
+        val elapsed = SystemClock.elapsedRealtime() - holdStartMs
+        val maxDoubles = elapsed / HOLD_ACCELERATE_INTERVAL_MS
+        var step = baseMs
+        var d = 0L
+        while (d < maxDoubles && step < HOLD_MAX_SEEK_STEP_MS) {
+            step = (step * 2).coerceAtMost(HOLD_MAX_SEEK_STEP_MS)
+            d++
+        }
+        return step
     }
     fun showControls() {
         controlsVisible = true
@@ -132,6 +145,7 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
             when (key.action) {
                 KeyEvent.ACTION_DOWN -> {
                     if (key.repeatCount == 0) {
+                        holdStartMs = SystemClock.elapsedRealtime()
                         keyStartedWithOverlay = controlsVisible
                         longSeek = false
                         longOk = false
@@ -139,11 +153,11 @@ fun PlayerScreen(repository: AppRepository, series: Series, startIndex: Int, res
                     } else when (key.keyCode) {
                         KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
                             longSeek = true
-                            seek(-settings.seekSeconds * 1_000L)
+                            seek(-holdSeekStep(settings.seekSeconds * 1_000L))
                         }
                         KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
                             longSeek = true
-                            seek(settings.seekSeconds * 1_000L)
+                            seek(holdSeekStep(settings.seekSeconds * 1_000L))
                         }
                         KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A -> if (!longOk) {
                             longOk = true
@@ -245,6 +259,10 @@ private val PLAYER_KEYS = setOf(
 )
 
 private val OK_KEYS = setOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_BUTTON_A)
+
+/** 长按快进/快退：按住每满 3 秒，单次跳进步长翻一倍；步长封顶 2 分钟 */
+private const val HOLD_ACCELERATE_INTERVAL_MS = 3_000L
+private const val HOLD_MAX_SEEK_STEP_MS = 120_000L
 
 private fun AppRepository.saveProgressAsync(history: PlayHistory, frame: android.graphics.Bitmap?) {
     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch { saveProgress(history, frame) }
